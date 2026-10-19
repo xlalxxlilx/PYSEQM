@@ -1,4 +1,4 @@
-seqm_pm7 v0.2 と MOPAC 23.2.5 の照合（d 元素を含む 22 分子、1SCF、xTB 最適化構造）
+seqm_pm7 v0.3.0 と MOPAC 23.2.5 の照合（d 元素を含む 22 分子、1SCF、xTB 最適化構造）
 PM6  : max|dHf| = 0.0037 kcal/mol, max|dF| = 1.5787 kcal/mol/Å（N を含む PM6 を除くと 0.0191）, SCF 収束 22/22
 PM7- : max|dHf| = 0.0019 kcal/mol, max|dF| = 0.0203 kcal/mol/Å（N を含む PM6 を除くと 0.0203）, SCF 収束 22/22
 PM7  : max|dHf| = 0.0019 kcal/mol, max|dF| = 0.0203 kcal/mol/Å（N を含む PM6 を除くと 0.0203）, SCF 収束 22/22

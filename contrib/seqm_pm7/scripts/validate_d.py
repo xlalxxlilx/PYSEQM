@@ -16,7 +16,7 @@ with open(os.path.join(V, "per_system_d.csv"), "w") as f:
     f.write("system,natoms,method,Hf_mopac,Hf_seqm_pm7,dHf,max_abs_dF,scf_converged,scf_converger,time_s\n")
     for t in rows: f.write(",".join(f"{v:.6f}" if isinstance(v, float) else str(v) for v in t) + "\n")
 with open(os.path.join(V, "summary_d.txt"), "w") as f:
-    f.write("seqm_pm7 v0.2 と MOPAC 23.2.5 の照合（d 元素を含む 22 分子、1SCF、xTB 最適化構造）\n")
+    f.write(f"seqm_pm7 v{seqm_pm7.__version__} と MOPAC 23.2.5 の照合（d 元素を含む 22 分子、1SCF、xTB 最適化構造）\n")
     for m in ("PM6", "PM7-", "PM7"):
         sel = [t for t in rows if t[2] == m]
         nN = [t for t in sel if not ("N" in REF[t[0]]["sym"] and m == "PM6")]

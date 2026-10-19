@@ -14,6 +14,9 @@ from ase.data import chemical_symbols as _SYMS
 import csv
 tables.patch_constants(); tables.patch_rotate()
 from . import overlap_patch; overlap_patch.patch()
+from . import scf_fast; scf_fast.patch()
+from . import fock_fast; fock_fast.patch()
+from . import rot_fast; rot_fast.patch()
 EV2KCAL = 23.060547830619029
 SYM = list(_SYMS[1:87])
 torch.set_default_dtype(torch.float64)
@@ -36,7 +39,7 @@ class Topology:
     def __init__(self, Z, X): self.nbonds, self.ibonds = set_up_dentate(list(Z), np.asarray(X))
 
 def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp=None, hbond=None,
-            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=25, _return_mol=False):
+            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=8, pre_mode="inline", _return_mol=False):
     """symbols: 元素記号か原子番号の列（全分子で共通）。coords: (n,3) または (nmol,n,3) Å。
     method: "PM7"（MOPAC の PM7 に相当）、"PM7-"（補正なし = MOPAC の PM7-）、"PM6"（MOPAC の PM6 に相当）。
     戻り値は kcal/mol と kcal/mol/Å。"""
@@ -78,8 +81,12 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
         P_start = P0
         with core.mode(cmode), contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
             if ic < len(convs) - 1: warnings.simplefilter("ignore")
-            if cv[0] == "pre":
-                # 適応混合を pre_iter 回だけ回して正しい解の近くに寄せてから DIIS に切り替える
+            hyb = 0
+            if cv[0] == "pre" and pre_mode == "inline":
+                # 適応混合を最大 pre_iter 回 → 同じ積分のまま DIIS（scf_fast）
+                cv = tuple(cv[1:]); hyb = pre_iter
+            elif cv[0] == "pre":
+                # （旧方式）適応混合を別の計算として pre_iter 回だけ回してから DIIS に切り替える
                 cv = tuple(cv[1:])
                 par["scf_converger"] = [1]
                 old_max = _SL.MAX_ITER; _SL.MAX_ITER = pre_iter
@@ -92,7 +99,8 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
             par["scf_converger"] = list(cv)
             mol = Molecule(const, par, xyz, species, charges=ch).to(dev)
             es = Electronic_Structure(par).to(dev)
-            es(mol, P0=P_start)
+            with scf_fast.hybrid(hyb):
+                es(mol, P0=P_start)
         nc = getattr(es, "notconverged", None)
         converged = nc is None or not bool(torch.as_tensor(nc).any())
         if converged: break

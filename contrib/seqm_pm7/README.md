@@ -1,4 +1,4 @@
-# seqm_pm7 v0.2 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応）
+# seqm_pm7 v0.3 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応・高速化）
 
 > **English summary.** `seqm_pm7` adds MOPAC-23.2.5-compatible **PM7**, **PM7-** and **PM6** (with MOPAC's
 > corrections) to PYSEQM, including elements with d orbitals (validated for H, C, N, O, F, Al, Si, Cl, Zr, Hf).
@@ -7,6 +7,9 @@
 > issues in PYSEQM 2.0.0's d-orbital path (atom tables for Z ≥ 57, missing d terms in the isolated-atom energy,
 > STO overlap expansions and d–d rotation, some (dd|pp) two-centre integrals, PO3 for F, SCF convergence).
 > Licensed under Apache-2.0 (derived from OpenMOPAC); see `LICENSE` and `NOTICE`. Documentation below is in Japanese.
+> v0.3 adds speed-ups that do not change results (SCF pre-conditioning on the same integrals, a pair-type-split
+> d-path Fock build, and a vectorised rotation-matrix builder that makes the autograd backward of that step ~10x cheaper).
+> PM7 single point + forces, 148 atoms: 41.5 s → 11.0 s (CPU, 4 threads); 2.9 s → 1.5 s per structure (GPU, batch of 8).
 
 
 PYSEQM（LANL、PyTorch 実装の NDDO 法）に、MOPAC の **PM7** と、MOPAC と同じ補正つきの **PM6** を外付けで追加するパッケージ。
@@ -24,6 +27,7 @@ PYSEQM 本体のファイルは書き換えず、読み込み時に関数を差�
 | ⑤ 水素結合 | EH_plus 型（供与体・受容体の判定、角度・二面角、減衰、O–O 短距離項） | `corrections/Hydrogen_bond_corrections.F90`, `H_bond_correction_EH_plus.F90`, `H_bond_correction_bits.F90` |
 | ⑥ d 元素（v0.2） | Al, Si, Zr, Hf など d 軌道をもつ元素を PYSEQM の spd 経路で計算し、MOPAC と一致させるための修正一式（下の「d 元素への対応」） | `integrals/mndod.F90`, `models/calpar.F90`, `models/parameters_C.F90` |
 | ⑦ Si–O–H 補正（PM7） | Si と H の両方に結合した O ごとの角度補正 15·(θ − 125°)²·exp(…) | `corrections/set_up_dentate.F90` の `Si_O_H_Correction` |
+| ⑧ 高速化（v0.3） | SCF の前処理を同じ積分のまま行う（`scf_fast`）、d 経路の Fock 行列を s・p だけの対と d を含む対に分けて bmm で組み立てる（`fock_fast`）、回転行列の要素ごとの in-place 代入を 1 回の代入にまとめて逆伝播を速くする（`rot_fast`）。結果は変えない | ― |
 | 物理定数 | 既定で CODATA（MOPAC 23 の既定）。`constants="old"` で PYSEQM・MOPAC OLDFPC の旧値 | `conref_C.F90` |
 
 補正項はすべて torch で書いてあり、力は自動微分で得る（MOPAC は分散・水素結合の勾配を前進差分で近似している）。
@@ -90,18 +94,26 @@ PYSEQM 2.0.0 の d 経路（`method="PM6"`）には、MOPAC と結果が合わ�
   SiH2(NMe2)2 で自前 14.3728・MOPAC のエネルギーの差分 14.3727・MOPAC の勾配 12.7942 kcal/mol/Å）
 - 分子の向きに依らない（歪んだ SiCl4 を 4 方向に回して 7.5e-6 kcal/mol 以内。PYSEQM 本体のままでは 0.24）
 
-## 速度（d 経路、PM7、力つき 1 点計算）
+## 速度（d 経路、PM7、力つき 1 点計算、v0.3）
 
 | 系 | 原子数 | CPU 4 スレッド | GPU（L4）1 構造 | GPU 8 構造まとめて（1 構造あたり） | MOPAC 23.2.5（1 スレッド） |
 |---|---|---|---|---|---|
-| TDMAZ | 37 | 3.2 s | 3.5 s | 1.0 s | 0.24 s |
-| Zr4O6(OH)4 × 4 | 72 | 13 s | 7.7 s | 2.6 s | 1.05 s |
-| TDMAZ × 4 | 148 | 60 s | 6.7 s | 3.4 s | 1.26 s |
+| TDMAZ | 37 | 1.25 s（v0.2 は 2.22 s） | 1.97 s（2.70 s） | 0.53 s（0.69 s） | 0.24 s |
+| Zr4O6(OH)4 × 4 | 72 | 6.07 s（10.06 s） | 3.70 s（5.21 s） | 1.39 s（2.02 s） | 1.05 s |
+| TDMAZ × 4 | 148 | 10.96 s（41.54 s） | 3.96 s（5.97 s） | 1.51 s（2.93 s） | 1.26 s |
 
-（他のプロセスが CPU を使っている共有機での値。torch のスレッド数をコア数いっぱいにすると、共有機では過剰割り当てで桁違いに遅くなる。）
-d 経路は MOPAC より 3〜50 倍遅い。時間の大半は PYSEQM の Fock 行列の組み立て（d の一中心・二中心項）と SCF の反復で、
-GPU で多数の構造をまとめて計算する使い方が向く。ASE の `SeqmPM7` は既定で前の構造の密度行列を次の SCF の初期値に使う
-（Zr(OH)4 の BFGS 27 ステップで 49.5 s → 34.1 s）。
+括弧内は、同じ機械・同じ構造で測った v0.2 相当の値（`scripts/bench_v03.py`、結果は `validation/bench_v03_*.json`）。
+新旧の結果の差は、生成熱で 2e-8 kcal/mol 以下、力で 5e-7 kcal/mol/Å 以下。
+測定は他のプロセスが CPU を使っている共有機で行った。torch のスレッド数をコア数いっぱいにすると、共有機では過剰割り当てで桁違いに遅くなる。
+
+v0.3 で変えたこと（いずれも計算結果は変わらない）:
+
+1. **SCF の前処理**：v0.2 は、適応混合の前処理を別の計算として流し、積分を 2 回作っていた。v0.3 では同じ積分のまま、適応混合（最大 `pre_iter` 回、既定 8）から Pulay DIIS に切り替える（`scf_fast`）。旧方式は `pre_mode="separate"` で使える。
+2. **d 経路の Fock 行列**：PYSEQM は全原子対を 45×45 の積分ブロックで扱う。v0.3 では、s・p だけの対を 10×10 の部分で計算し、J 項と交換項を bmm にする。交換項用の並べ替えた積分は、SCF の間は使い回す（`fock_fast`）。1 中心の d 項も、d 軌道をもつ原子のブロックだけで計算する。
+3. **力（自動微分）**：PYSEQM の `GenerateRotationMatrix` は、(原子対数, 15, 45) の行列に要素ごとの in-place 代入を約 1000 回行う。その逆伝播では代入のたびに行列全体が複製される。v0.3 では、元のソースを AST で機械的に変換して 1 回の代入にまとめる（`rot_fast`）。148 原子では、この部分の逆伝播が約 10 s から約 0.9 s になり、結果はビット単位で一致する。
+
+GPU で 8 構造をまとめて計算すると、1 構造あたり MOPAC の 1.2〜2.2 倍の時間になる。CPU で 1 構造ずつ計算するなら、MOPAC のほうが 5〜9 倍速い。
+ASE の `SeqmPM7` は、既定で前の構造の密度行列を次の SCF の初期値に使う。
 
 ```python
 from ase.optimize import BFGS
@@ -111,4 +123,4 @@ r = seqm_pm7.compute(symbols, coords_batch, "PM7", device="cuda")   # (nmol, n, 
 r["scf_converged"], r["scf_converger"]           # SCF の収束と使った方法
 ```
 
-テスト: `PYTHONPATH=. python -m pytest -q tests/`（62 件、CPU で約 2.5 分）。
+テスト: `PYTHONPATH=. python -m pytest -q tests/`（62 件、CPU で約 40 秒）。
