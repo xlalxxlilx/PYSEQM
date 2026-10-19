@@ -5,4 +5,4 @@ d 経路の PYSEQM の不具合（原子定数表、EISOL、重なり積分、d 
 パラメータと補正式の出典: OpenMOPAC（Apache-2.0, https://github.com/openmopac/mopac）。"""
 from .calculator import compute, Topology
 from .ase_calc import SeqmPM7
-__version__ = "0.3.0"
+__version__ = "0.4.0"

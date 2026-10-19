@@ -38,29 +38,43 @@ def _G(wsub, ind, nb):
     return g.permute(0, 3, 1, 2, 4).reshape(-1, nb * nb, nb * nb)   # p, (j,i), (ν,σ)
 
 
-def _cachedG(w, key, sel, npk, ind, nb):
-    if torch.is_grad_enabled() and w.requires_grad:
-        return _G(w[sel][:, :npk, :npk], ind, nb)
-    d = getattr(w, "_seqm_pm7_G", None)
+def _cache(w):
+    d = getattr(w, "_seqm_pm7_cache", None)
     if d is None:
-        d = {}; w._seqm_pm7_G = d
-    if key not in d:
-        d[key] = _G(w[sel][:, :npk, :npk], ind, nb)
-    return d[key]
+        d = {}; w._seqm_pm7_cache = d
+    return d
 
 
-def _two_center_group(F, P, w, maskd, mask, idxi, idxj, sel, nb, key):
+def _sub(w, key, sel, npk):
+    """w[sel, :npk, :npk]（先に切り出してから対を拾う）。勾配を記録しない SCF 中は使い回す"""
+    if torch.is_grad_enabled() and w.requires_grad:
+        return w[:, :npk, :npk][sel]
+    d = _cache(w)
+    if ("ws", key) not in d:
+        d[("ws", key)] = w[:, :npk, :npk][sel].contiguous()
+    return d[("ws", key)]
+
+
+def _cachedG(w, key, ws, ind, nb):
+    if torch.is_grad_enabled() and w.requires_grad:
+        return _G(ws, ind, nb)
+    d = _cache(w)
+    if ("G", key) not in d:
+        d[("G", key)] = _G(ws, ind, nb)
+    return d[("G", key)]
+
+
+def _two_center_group(F, P, Ppk, w, maskd, mask, idxi, idxj, sel, nb, key):
     if sel.numel() == 0:
         return F
     npk = nb * (nb + 1) // 2
     dev, dt = P.device, P.dtype
     i0, i1 = torch.tril_indices(nb, nb, device=dev)
-    wt = FK._cached_tensor(FK.WEIGHT_45, dev, dt)[:npk]
     ind = FK._cached_index(FK.K_ind_9, dev)[:nb, :nb]
     idxA, idxB = idxj[sel], idxi[sel]
-    ws = w[sel][:, :npk, :npk]
-    PA = P[maskd[idxA]][:, :nb, :nb][:, i1, i0] * wt                  # (p, npk)
-    PB = P[maskd[idxB]][:, :nb, :nb][:, i1, i0] * wt
+    ws = _sub(w, key, sel, npk)
+    PA = Ppk[idxA][:, :npk]                                            # 原子ごとに詰めた P（重み 2 つき）
+    PB = Ppk[idxB][:, :npk]
     J_A = torch.bmm(PA.unsqueeze(1), ws).squeeze(1)                   # Σ_a PA[a] w[a,b]
     J_B = torch.bmm(ws, PB.unsqueeze(-1)).squeeze(-1)                 # Σ_b w[a,b] PB[b]
     B = ws.shape[0]
@@ -71,7 +85,7 @@ def _two_center_group(F, P, w, maskd, mask, idxi, idxj, sel, nb, key):
     F.index_add_(0, maskd[idxA], sumB)
     F.index_add_(0, maskd[idxB], sumA)
     Pp = (-0.5 * P[mask[sel]][:, :nb, :nb]).transpose(1, 2)           # PYSEQM と同じ転置
-    G = _cachedG(w, key, sel, npk, ind, nb)
+    G = _cachedG(w, key, ws, ind, nb)
     K = torch.bmm(G, Pp.reshape(B, nb * nb, 1)).view(B, nb, nb)        # K[p, j, i]
     Ks = torch.zeros(B, 9, 9, device=dev, dtype=dt)
     Ks[:, :nb, :nb] = K
@@ -83,28 +97,45 @@ def two_center(F, P, w, maskd, mask, idxi, idxj, themethod):
     if not ENABLED or themethod != "PM6":
         return _ORIG_TWO(F, P, w, maskd, mask, idxi, idxj, themethod)
     seld, selsp = _groups(w)
-    F = _two_center_group(F, P, w, maskd, mask, idxi, idxj, seld, 9, "d")
-    F = _two_center_group(F, P, w, maskd, mask, idxi, idxj, selsp, 4, "sp")
+    dev, dt = P.device, P.dtype
+    i0, i1 = FK._cached_index(FK.TRIL_IDX_9, dev)
+    wt = FK._cached_tensor(FK.WEIGHT_45, dev, dt)
+    Ppk = P[maskd][:, i1, i0] * wt                                     # (原子数, 45)。TRIL の先頭 10 が s・p
+    F = _two_center_group(F, P, Ppk, w, maskd, mask, idxi, idxj, seld, 9, "d")
+    F = _two_center_group(F, P, Ppk, w, maskd, mask, idxi, idxj, selsp, 4, "sp")
     return F
+
+
+def _wmat(W):
+    """Floc[:, col] = Σ_k W[:, w_idxs[k]] · Pnew[:, p_idxs[k]] を Floc = Wm @ Pnew にする行列（W ごとに一度）"""
+    c = getattr(W, "_seqm_pm7_wmat", None)
+    if c is None:
+        with torch.no_grad():
+            rows = torch.nonzero(W.abs().sum(1) > 0).flatten()
+        cols, ps, ws = [], [], []
+        for col, w_idxs, p_idxs in FK.PM6_FLOCAL_MAP:
+            for wi, pi in zip(w_idxs, p_idxs):
+                cols.append(col); ps.append(pi); ws.append(wi)
+        dev = W.device
+        cols = torch.tensor(cols, device=dev); ps = torch.tensor(ps, device=dev); ws = torch.tensor(ws, device=dev)
+        Wr = W[rows]
+        Wm = torch.zeros(rows.numel(), 45 * 45, dtype=W.dtype, device=dev)
+        Wm.index_add_(1, cols * 45 + ps, Wr[:, ws])
+        c = (rows, Wm.view(-1, 45, 45))
+        W._seqm_pm7_wmat = c
+    return c
 
 
 def d_contrib_one_center(F, P, W, maskd):
     if not ENABLED:
         return _ORIG_D1(F, P, W, maskd)
-    rows = getattr(W, "_seqm_pm7_rows", None)
-    if rows is None:
-        with torch.no_grad():
-            rows = torch.nonzero(W.abs().sum(1) > 0).flatten()
-        W._seqm_pm7_rows = rows
+    rows, Wm = _wmat(W)
     if rows.numel() == 0:
         return F
     i0, i1 = FK._cached_index(FK.TRIL_IDX_9, P.device)
     sc = FK._cached_tensor(FK.WEIGHT_45, P.device, P.dtype)
     Pnew = P[rows][:, i0, i1] * sc
-    Wr = W[rows]
-    Floc = torch.zeros(rows.numel(), 45, device=P.device, dtype=P.dtype)
-    for col, w_idxs, p_idxs in FK.PM6_FLOCAL_MAP:
-        Floc[:, col] = (Wr[:, w_idxs] * Pnew[:, p_idxs]).sum(dim=1)
+    Floc = torch.bmm(Wm, Pnew.unsqueeze(-1)).squeeze(-1)
     add = torch.zeros(rows.numel(), 9, 9, device=P.device, dtype=P.dtype)
     add[:, i1, i0] = Floc
     F.index_add_(0, rows, add)

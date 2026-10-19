@@ -20,18 +20,34 @@ def _counting_build_fock(problem, configuration, density):
 
 
 def _solve_scf(problem, configuration, P, *, backward=False, verbose=True):
+    from . import scf_compact as SC
     n = _PRE.get()
-    if n <= 0 or configuration.converger[0] != 2 or problem.unrestricted:
+    conv = configuration.converger[0]
+    ok = SC.usable(problem, configuration, backward) and conv in (1, 2)
+    if conv == 1 and ok:
+        r = SC.adaptive(problem, P, configuration, _SL.MAX_ITER)
+        if r is not None:
+            return r
+    if conv != 2 or problem.unrestricted:
         return _ORIG(problem, configuration, P, backward=backward, verbose=verbose)
-    old = _SL.MAX_ITER
-    _SL.MAX_ITER = n
-    try:
-        P1, nc1 = _SL.scf_forward1(problem, P.clone(), configuration, backward=backward, verbose=False)
-    finally:
-        _SL.MAX_ITER = old
-    if not bool(nc1.any()):
-        return P1, nc1                      # 適応混合だけで収束した
-    return _SL.scf_forward2(problem, P1, configuration, backward=backward, verbose=verbose)
+    if n > 0:
+        r = SC.adaptive(problem, P.clone(), configuration, n) if ok else None
+        if r is None:
+            old = _SL.MAX_ITER
+            _SL.MAX_ITER = n
+            try:
+                r = _SL.scf_forward1(problem, P.clone(), configuration, backward=backward, verbose=False)
+            finally:
+                _SL.MAX_ITER = old
+        P1, nc1 = r
+        if not bool(nc1.any()):
+            return P1, nc1                      # 適応混合だけで収束した
+        P = P1
+    if ok:
+        r = SC.diis(problem, P, configuration, _SL.MAX_ITER)
+        if r is not None:
+            return r
+    return _SL.scf_forward2(problem, P, configuration, backward=backward, verbose=verbose)
 
 
 @contextlib.contextmanager

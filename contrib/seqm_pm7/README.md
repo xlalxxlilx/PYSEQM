@@ -1,4 +1,4 @@
-# seqm_pm7 v0.3 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応・高速化）
+# seqm_pm7 v0.4 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応・高速化・距離による打ち切り）
 
 > **English summary.** `seqm_pm7` adds MOPAC-23.2.5-compatible **PM7**, **PM7-** and **PM6** (with MOPAC's
 > corrections) to PYSEQM, including elements with d orbitals (validated for H, C, N, O, F, Al, Si, Cl, Zr, Hf).
@@ -10,6 +10,10 @@
 > v0.3 adds speed-ups that do not change results (SCF pre-conditioning on the same integrals, a pair-type-split
 > d-path Fock build, and a vectorised rotation-matrix builder that makes the autograd backward of that step ~10x cheaper).
 > PM7 single point + forces, 148 atoms: 41.5 s → 11.0 s (CPU, 4 threads); 2.9 s → 1.5 s per structure (GPU, batch of 8).
+> v0.4 runs the SCF in the compact orbital basis (no 9-orbital padding), removes the remaining in-place element writes
+> in the d-integral rotation, and adds an optional distance cutoff (`cutoff=10.0`, PM7 only): beyond 7 Å PM7's feathering
+> makes all two-centre integrals point charges, so far pairs are handled with point-charge Fock/Hcore terms plus the full
+> core–core expression (errors ≤ 5e-5 kcal/mol at 10 Å). 486/999-atom Zr systems that ran out of GPU memory now take ~12 s.
 
 
 PYSEQM（LANL、PyTorch 実装の NDDO 法）に、MOPAC の **PM7** と、MOPAC と同じ補正つきの **PM6** を外付けで追加するパッケージ。
@@ -28,6 +32,7 @@ PYSEQM 本体のファイルは書き換えず、読み込み時に関数を差�
 | ⑥ d 元素（v0.2） | Al, Si, Zr, Hf など d 軌道をもつ元素を PYSEQM の spd 経路で計算し、MOPAC と一致させるための修正一式（下の「d 元素への対応」） | `integrals/mndod.F90`, `models/calpar.F90`, `models/parameters_C.F90` |
 | ⑦ Si–O–H 補正（PM7） | Si と H の両方に結合した O ごとの角度補正 15·(θ − 125°)²·exp(…) | `corrections/set_up_dentate.F90` の `Si_O_H_Correction` |
 | ⑧ 高速化（v0.3） | SCF の前処理を同じ積分のまま行う（`scf_fast`）、d 経路の Fock 行列を s・p だけの対と d を含む対に分けて bmm で組み立てる（`fock_fast`）、回転行列の要素ごとの in-place 代入を 1 回の代入にまとめて逆伝播を速くする（`rot_fast`）。結果は変えない | ― |
+| ⑨ 高速化・打ち切り（v0.4） | SCF を実際の軌道だけで回す（`scf_compact`）、d 積分の回転の in-place 代入をまとめる（`rot_fast`）、Fock の積分の切り出しと 1 中心 d 項の行列積化（`fock_fast`）、距離による打ち切り（`farfield`、`cutoff=` 引数、PM7 のみ） | `integrals/mndod.F90` の `to_point` |
 | 物理定数 | 既定で CODATA（MOPAC 23 の既定）。`constants="old"` で PYSEQM・MOPAC OLDFPC の旧値 | `conref_C.F90` |
 
 補正項はすべて torch で書いてあり、力は自動微分で得る（MOPAC は分散・水素結合の勾配を前進差分で近似している）。
@@ -40,6 +45,7 @@ r = seqm_pm7.compute(symbols, coords, "PM7", charge=0)   # coords: (n,3) Å ま�
 r["Hf"]        # 生成熱 kcal/mol（MOPAC の FINAL HEAT OF FORMATION に相当）
 r["forces"]    # kcal/mol/Å
 r["E_disp"], r["E_hb"], r["E_CC"], r["E_NHCO"]   # 補正項の内訳 kcal/mol
+r = seqm_pm7.compute(symbols, coords, "PM7", device="cuda", cutoff=10.0)   # 数百原子以上の系（PM7 のみ）
 # method: "PM7"（MOPAC PM7）, "PM7-"（補正なし = MOPAC PM7-）, "PM6"（MOPAC PM6）
 
 from seqm_pm7 import SeqmPM7          # ASE 計算機（energy は Hf を eV に換算）
@@ -94,25 +100,64 @@ PYSEQM 2.0.0 の d 経路（`method="PM6"`）には、MOPAC と結果が合わ�
   SiH2(NMe2)2 で自前 14.3728・MOPAC のエネルギーの差分 14.3727・MOPAC の勾配 12.7942 kcal/mol/Å）
 - 分子の向きに依らない（歪んだ SiCl4 を 4 方向に回して 7.5e-6 kcal/mol 以内。PYSEQM 本体のままでは 0.24）
 
-## 速度（d 経路、PM7、力つき 1 点計算、v0.3）
+## 速度（d 経路、PM7、力つき 1 点計算、v0.4）
 
 | 系 | 原子数 | CPU 4 スレッド | GPU（L4）1 構造 | GPU 8 構造まとめて（1 構造あたり） | MOPAC 23.2.5（1 スレッド） |
 |---|---|---|---|---|---|
-| TDMAZ | 37 | 1.25 s（v0.2 は 2.22 s） | 1.97 s（2.70 s） | 0.53 s（0.69 s） | 0.24 s |
-| Zr4O6(OH)4 × 4 | 72 | 6.07 s（10.06 s） | 3.70 s（5.21 s） | 1.39 s（2.02 s） | 1.05 s |
-| TDMAZ × 4 | 148 | 10.96 s（41.54 s） | 3.96 s（5.97 s） | 1.51 s（2.93 s） | 1.26 s |
+| TDMAZ | 37 | 0.95 s（v0.3 は 1.25 s） | 1.48 s（1.96 s） | 0.26 s（0.51 s） | 0.24 s |
+| Zr4O6(OH)4 × 4 | 72 | 3.77 s（5.82 s） | 3.13 s（3.83 s） | 0.85 s（1.36 s） | 1.05 s |
+| TDMAZ × 4 | 148 | 7.49 s（11.02 s） | 3.15 s（3.88 s） | 0.84 s（1.51 s） | 1.26 s |
 
-括弧内は、同じ機械・同じ構造で測った v0.2 相当の値（`scripts/bench_v03.py`、結果は `validation/bench_v03_*.json`）。
-新旧の結果の差は、生成熱で 2e-8 kcal/mol 以下、力で 5e-7 kcal/mol/Å 以下。
+括弧内は、同じ機械・同じ構造で測った v0.3 の値（`scripts/bench_pkg.py`、結果は `validation/bench_v04_*.json`）。
+v0.3 との結果の差は、生成熱で 3e-8 kcal/mol 以下、力で 2e-9 kcal/mol/Å 以下。
+v0.2 の値は 37／72／148 原子で、CPU 2.22／10.06／41.5 s、GPU 8 構造まとめて 1 構造あたり 0.69／2.02／2.93 s。
 測定は他のプロセスが CPU を使っている共有機で行った。torch のスレッド数をコア数いっぱいにすると、共有機では過剰割り当てで桁違いに遅くなる。
 
 v0.3 で変えたこと（いずれも計算結果は変わらない）:
 
-1. **SCF の前処理**：v0.2 は、適応混合の前処理を別の計算として流し、積分を 2 回作っていた。v0.3 では同じ積分のまま、適応混合（最大 `pre_iter` 回、既定 8）から Pulay DIIS に切り替える（`scf_fast`）。旧方式は `pre_mode="separate"` で使える。
-2. **d 経路の Fock 行列**：PYSEQM は全原子対を 45×45 の積分ブロックで扱う。v0.3 では、s・p だけの対を 10×10 の部分で計算し、J 項と交換項を bmm にする。交換項用の並べ替えた積分は、SCF の間は使い回す（`fock_fast`）。1 中心の d 項も、d 軌道をもつ原子のブロックだけで計算する。
-3. **力（自動微分）**：PYSEQM の `GenerateRotationMatrix` は、(原子対数, 15, 45) の行列に要素ごとの in-place 代入を約 1000 回行う。その逆伝播では代入のたびに行列全体が複製される。v0.3 では、元のソースを AST で機械的に変換して 1 回の代入にまとめる（`rot_fast`）。148 原子では、この部分の逆伝播が約 10 s から約 0.9 s になり、結果はビット単位で一致する。
+1. **SCF の前処理**：適応混合の前処理を、積分を作り直さずに行う（`scf_fast`、`pre_iter` 既定 8。旧方式は `pre_mode="separate"`）。
+2. **d 経路の Fock 行列**：s・p だけの対を 10×10 の部分で計算し、J 項と交換項を bmm にする（`fock_fast`）。
+3. **力（自動微分）**：`GenerateRotationMatrix` の要素ごとの in-place 代入（約 1000 回）を、AST で機械的に 1 回の代入にまとめる（`rot_fast`）。
 
-GPU で 8 構造をまとめて計算すると、1 構造あたり MOPAC の 1.2〜2.2 倍の時間になる。CPU で 1 構造ずつ計算するなら、MOPAC のほうが 5〜9 倍速い。
+v0.4 で変えたこと（4 から 6 は計算結果が変わらない。7 は指定したときだけ）:
+
+4. **実際の軌道だけの SCF**（`scf_compact`）：PYSEQM は全原子を 9 軌道分（148 原子で 1332 次元）に詰めた行列で、DIIS の交換子、Fock の外挿、固有値計算前の詰め直しを行う。v0.4 では、適応混合と DIIS を同じアルゴリズムのまま、実際の軌道（148 原子で 324 次元）だけで行う。Fock を組み立てるときだけ 9 軌道分に戻す。閉殻で、まとめて計算する構造の原子構成がそろっているときに使う。
+5. **d 積分の回転**（`rot_fast`）：`Rotate2Center2Electron` の (n, 45, 45) 行列への要素ごとの代入を、1 回の index_copy にまとめる。結果はビット単位で一致し、逆伝播が約 27 倍速い。
+6. **Fock の組み立て**（`fock_fast`）：積分は先に 10×10 に切り出してから対を拾い、SCF 中は使い回す。1 中心の d 項は 45 列のループをやめ、W から一度だけ作る 45×45 行列との行列積にする。
+7. **距離による打ち切り**（`farfield`、`compute(..., cutoff=10.0)`）：下の節を参照。
+
+## 距離による打ち切り（v0.4、PM7 のみ）
+
+PM7 では feathering（MOPAC の `to_point`）により、7 Å 以上の原子対の二中心積分、電子–芯引力、核間反発の γ はすべて点電荷 γ_AB = e²/R_AB になる。
+そこで、`cutoff`（R_c ≥ 7 Å）以上の原子対を PYSEQM の原子対リストから外し、その寄与を次の形で足し戻す。
+
+- Hcore の対角に −Σ_B Z_B γ_AB
+- Fock の対角に Σ_B N_B γ_AB
+- Fock の非対角（交換項）に −½ γ_AB P_μλ
+- 核間反発は、近い対と同じ ccrep の式（O–H の追加項など）で計算する
+
+省くのは、R ≥ R_c での重なり S（共鳴積分 β·S）と、核間反発のうち指数関数的に減衰して実質ゼロになる項だけである。
+PM6 には feathering が無いので近似になる。PM6 で使うには `cutoff_approx=True` を指定する。
+
+| 系（打ち切りなしとの差） | R_c = 8 Å | 10 Å | 12 Å |
+|---|---|---|---|
+| 8×TDMAZ（296 原子）ΔHf / max ΔF | 2.3e-4 / 4.2e-5 | 2.1e-5 / 4.5e-6 | 9e-8 / 5e-9 |
+| 8×Zr4O6(OH)4（144 原子） | 3.9e-3 / 9.7e-4 | 4.4e-5 / 6.1e-6 | 3.5e-6 / 9.2e-7 |
+| 8×HF(H2O)20（496 原子） | 4.7e-7 / 9.3e-8 | 5.6e-7 / 1.8e-10 | 4.7e-7 / 4.7e-11 |
+
+単位は kcal/mol と kcal/mol/Å（`validation/cut_test_cuda.json`）。既定は打ち切りなしで、使うなら 10 Å を勧める。
+
+大きい系（GPU 1 構造、R_c = 10 Å、`validation/big_test_cuda.json`、`validation/big_vs_mopac.json`）:
+
+| 系 | 原子数 | 打ち切りなし | R_c = 10 Å | MOPAC 23.2.5（1 スレッド） | MOPAC との ΔHf |
+|---|---|---|---|---|---|
+| 27×Zr4O6(OH)4 | 486 | GPU メモリ不足 | 13.3 s（ピーク 6.2 GiB） | 17.6 s | −0.0016 kcal/mol |
+| 27×TDMAZ | 999 | GPU メモリ不足 | 12.1 s（10.6 GiB） | 15.0 s | +0.0126 kcal/mol |
+| 27×HF(H2O)20 | 1674 | 51.3 s（14.4 GiB） | 49.1 s（5.5 GiB） | 47.8 s | +0.0008 kcal/mol |
+
+TDMAZ 単体でも、MOPAC との差は +0.0005 kcal/mol ある（`validation/per_system_d.csv`）。27 分子ではこれだけで +0.014 kcal/mol になり、上の差はほぼこれで説明できる。
+1674 原子の水クラスターでは、約 3400 軌道の固有値計算が時間の大半を占め、打ち切りによる時間の短縮はわずか。
+
 ASE の `SeqmPM7` は、既定で前の構造の密度行列を次の SCF の初期値に使う。
 
 ```python
@@ -123,4 +168,4 @@ r = seqm_pm7.compute(symbols, coords_batch, "PM7", device="cuda")   # (nmol, n, 
 r["scf_converged"], r["scf_converger"]           # SCF の収束と使った方法
 ```
 
-テスト: `PYTHONPATH=. python -m pytest -q tests/`（62 件、CPU で約 40 秒）。
+テスト: `PYTHONPATH=. python -m pytest -q tests/`（66 件、CPU で約 1 分）。

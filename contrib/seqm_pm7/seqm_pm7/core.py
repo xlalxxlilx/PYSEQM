@@ -86,7 +86,18 @@ def _ccrep(const, ni, nj, idxi, idxj, rij, rho0xi, rho0xj, alp, chi, parameters,
 def pair_nuclear_energy(Z, const, nmol, ni, nj, idxi, idxj, rij, rho0xi, rho0xj, alp, chi, gam, method="AM1", parameters=None):
     m = _active()
     if m in ("PM7", "PM6x") and method in ("PM6", "PM6_SP"):
-        return _ccrep(const, ni, nj, idxi, idxj, rij, rho0xi, rho0xj, alp, chi, parameters, pm7=(m == "PM7"))
+        E = _ccrep(const, ni, nj, idxi, idxj, rij, rho0xi, rho0xj, alp, chi, parameters, pm7=(m == "PM7"))
+        from . import farfield
+        Ef = farfield.far_nuclear(Z, const, alp, chi, parameters, m)
+        if Ef is not None:                                                    # 打ち切った遠い対の分を各構造の最初の対に足す
+            pm = farfield._get()["mol"].pair_molid
+            cnt = torch.bincount(pm, minlength=Ef.shape[0])
+            if bool((cnt == 0).any()):
+                raise ValueError("打ち切り距離の内側に原子対が 1 つも無い構造がある（cutoff を大きくする）")
+            first = torch.zeros(Ef.shape[0], dtype=torch.long, device=E.device).scatter_reduce(
+                0, pm, torch.arange(pm.numel(), device=E.device), reduce="amin", include_self=False)
+            E = E.index_add(0, first, Ef)
+        return E
     E = _orig_pne(Z, const, nmol, ni, nj, idxi, idxj, rij, rho0xi, rho0xj, alp, chi, gam, method=method, parameters=parameters)
     if m == "PM6x" and method in ("PM6", "PM6_SP"):
         rija = rij * _A0; zz = const.tore[ni] * const.tore[nj]

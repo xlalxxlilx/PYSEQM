@@ -17,6 +17,7 @@ from . import overlap_patch; overlap_patch.patch()
 from . import scf_fast; scf_fast.patch()
 from . import fock_fast; fock_fast.patch()
 from . import rot_fast; rot_fast.patch()
+from . import farfield; farfield.patch()
 EV2KCAL = 23.060547830619029
 SYM = list(_SYMS[1:87])
 torch.set_default_dtype(torch.float64)
@@ -39,7 +40,7 @@ class Topology:
     def __init__(self, Z, X): self.nbonds, self.ibonds = set_up_dentate(list(Z), np.asarray(X))
 
 def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp=None, hbond=None,
-            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=8, pre_mode="inline", _return_mol=False):
+            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=8, pre_mode="inline", cutoff=None, cutoff_approx=False, _return_mol=False):
     """symbols: 元素記号か原子番号の列（全分子で共通）。coords: (n,3) または (nmol,n,3) Å。
     method: "PM7"（MOPAC の PM7 に相当）、"PM7-"（補正なし = MOPAC の PM7-）、"PM6"（MOPAC の PM6 に相当）。
     戻り値は kcal/mol と kcal/mol/Å。"""
@@ -58,6 +59,12 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
         smeth, pdir, cmode, mmname = ("PM6" if set(Z) & PM6_D else "PM6_SP"), PM6_DIR, "PM6x", "PM6"
     else:
         raise ValueError(method)
+    if cutoff is not None:
+        # 距離による打ち切り（farfield）。PM7 では R ≥ 7 Å の積分が点電荷なので、R_c ≥ 7 Å ならほぼ厳密
+        if float(cutoff) < 7.0:
+            raise ValueError("cutoff は 7 Å 以上にする（PM7 の feathering が点電荷になる距離）")
+        if m != "PM7" and m != "PM7-" and not cutoff_approx:
+            raise ValueError("PM6 には feathering が無く、打ち切りは近似になる。使うなら cutoff_approx=True")
     o = np.argsort(-Z, kind="stable")
     dev = torch.device(device)
     species = torch.as_tensor(np.tile(Z[o], (nmol, 1)), device=dev)
@@ -69,9 +76,10 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
         convs = ([("pre", 2, 0.0), (1,), (0, 0.1)] if P0 is None else [(2, 0.0), (1,), (0, 0.1)]) if smeth == "PM6" else [(2, 0.0), (1,), (0, 0.1)]
     else:
         convs = [tuple(scf_converger)]
-    par = {"method": smeth, "scf_eps": scf_eps, "scf_converger": list(convs[0]), "sp2": [False], "pair_outer_cutoff": 1e10,
+    par = {"method": smeth, "scf_eps": scf_eps, "scf_converger": list(convs[0]), "sp2": [False], "pair_outer_cutoff": (float(cutoff) if cutoff is not None else 1e10),
            "eig": True, "analytical_gradient": [False]}
     if pdir: par["parameter_file_dir"] = pdir
+    cv_a0 = cv["a0"]
     const = Constants(length_conversion_factor=1.0 / cv["a0"]).to(dev)
     ch = torch.as_tensor(np.broadcast_to(np.array(charge, float), (nmol,)).copy(), device=dev)
     import warnings
@@ -79,7 +87,7 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
     from seqm.basics import Energy as _Energy
     for ic, cv in enumerate(convs):
         P_start = P0
-        with core.mode(cmode), contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        with core.mode(cmode), farfield.active(cutoff), contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
             if ic < len(convs) - 1: warnings.simplefilter("ignore")
             hyb = 0
             if cv[0] == "pre" and pre_mode == "inline":

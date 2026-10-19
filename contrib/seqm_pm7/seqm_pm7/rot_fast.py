@@ -67,3 +67,53 @@ GenerateRotationMatrix_fast = _make()
 
 def patch():
     TT.GenerateRotationMatrix = GenerateRotationMatrix_fast
+
+
+# --- Rotate2Center2Electron: YM の要素ごとの代入（約 1000 回）を 1 回の index_copy に ---------------
+_ORIG_R2C = RD.Rotate2Center2Electron
+
+
+def _ym_index():
+    """元の while ループと同じ順序で (YM の行, 回転行列の行, 列) を列挙する"""
+    src = inspect.getsource(_ORIG_R2C)
+    g = {"np": RD.np}
+    # MET / META / METB / METI の定義部分だけを取り出して評価する
+    body = src.split("i = 0", 1)[0].split('"""', 2)[-1] if '"""' in src else src
+    lines = textwrap.dedent("\n".join(src.split("\n")[1:])).split("YM = torch.zeros_like(WW)")[0]
+    exec(lines, g)
+    MET, META, METB, METI = g["MET"], g["META"], g["METB"], g["METI"]
+    rows, Is, cols = [], [], []
+    KL = 1
+    while KL < 45:
+        mkl = MET[KL] - 1
+        NKL = METB[mkl] - META[mkl] + 1
+        for I in range(NKL):
+            rows.append(int(METI[I, mkl] - 1)); Is.append(I); cols.append(KL)
+        KL += 1
+    last = {}
+    for r, I, c in zip(rows, Is, cols):
+        last[(r, c)] = I                                   # 同じ要素への再代入は最後の値
+    return [k[0] for k in last], [v for v in last.values()], [k[1] for k in last]
+
+
+_YR, _YI, _YC = _ym_index()
+
+
+def Rotate2Center2Electron_fast(WW, rotationMatrix):
+    n = WW.shape[0]
+    dev = WW.device
+    r = torch.tensor(_YR, device=dev); I = torch.tensor(_YI, device=dev); c = torch.tensor(_YC, device=dev)
+    vals = rotationMatrix[:, I, c]                                                  # (n, nent)
+    flat = WW.new_zeros(n, 45 * 45)
+    lin = torch.cat([torch.zeros(1, dtype=torch.long, device=dev), r * 45 + c])
+    vals = torch.cat([torch.ones(n, 1, dtype=WW.dtype, device=dev), vals], dim=1)   # YM[0,0] = 1
+    YM = flat.index_copy(1, lin, vals).view(n, 45, 45)
+    STEP1 = torch.bmm(YM, WW.transpose(1, 2))
+    FIN = torch.bmm(STEP1, YM.transpose(1, 2))
+    FIN = torch.cat([torch.cat([WW[:, :10, :10], FIN[:, :10, 10:]], dim=2), FIN[:, 10:, :]], dim=1)
+    return FIN.transpose(1, 2)
+
+
+def patch():
+    TT.GenerateRotationMatrix = GenerateRotationMatrix_fast
+    TT.Rotate2Center2Electron = Rotate2Center2Electron_fast

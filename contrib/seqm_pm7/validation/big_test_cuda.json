@@ -1,0 +1,42 @@
+[
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "cutoff": null,
+  "t": null,
+  "peak_gib": null,
+  "oom": true
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "cutoff": 10.0,
+  "t": 11.880682229995728,
+  "peak_gib": 6.223634719848633
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "cutoff": null,
+  "t": null,
+  "peak_gib": null,
+  "oom": true
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "cutoff": 10.0,
+  "t": 12.194048643112183,
+  "peak_gib": 10.610878467559814
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "cutoff": null,
+  "t": 51.339760303497314,
+  "peak_gib": 14.391271114349365
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "cutoff": 10.0,
+  "t": 48.489585876464844,
+  "peak_gib": 5.45653772354126,
+  "dHf": 1.1802869266830385e-05,
+  "dF": 2.8688074138472075e-10
+ }
+]
