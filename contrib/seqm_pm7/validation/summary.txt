@@ -1,0 +1,6 @@
+systems: 106
+PM6   |ΔHf| mean 0.0000  max 0.0000 (s22:Uracil_dimer_h-bonded)  max|ΔF| median 0.001  95% 0.425  max 1.808 (s22:Uracil_dimer_stack) kcal/mol/Å
+PM7-  |ΔHf| mean 0.0000  max 0.0000 (s22:Adenine-thymine_complex_stack)  max|ΔF| median 0.001  95% 0.006  max 0.020 (s22:Benzene-ammonia_complex) kcal/mol/Å
+PM7   |ΔHf| mean 0.0000  max 0.0000 (s22:Adenine-thymine_complex_stack)  max|ΔF| median 0.001  95% 0.411  max 1.453 (s22:Uracil_dimer_h-bonded) kcal/mol/Å
+E_disp |Δ| max 0.00000   E_hb |Δ| max 0.00001 (largest |E_hb| 118.31 kcal/mol)  #systems with E_hb≠0: 19
+PM7 force outliers >0.5: [('cl:NH3_w8', 0.7189820727063174), ('cl:HF_w20_start_ionpair', 0.5023864867853431), ('cl:NH3_w20_start_neutral', 0.8192614356022916), ('cl:NH3_w20_start_ionpair', 0.7568407763686977), ('s22:Uracil_dimer_h-bonded', 1.4527475137532386)]

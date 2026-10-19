@@ -1,0 +1,24 @@
+seqm_pm7 — MOPAC-compatible PM7 / PM6 (including d-orbital elements) for PYSEQM
+
+This directory (contrib/seqm_pm7) is licensed under the Apache License, Version 2.0
+(see LICENSE in this directory). The rest of the PYSEQM repository keeps its own
+BSD-3-Clause license; nothing outside this directory is modified.
+
+This work contains code and data derived from OpenMOPAC
+(https://github.com/openmopac/mopac, Apache License 2.0, Copyright the MOPAC authors).
+The derived parts are re-implementations in Python/PyTorch of algorithms in the MOPAC
+23.2.5 Fortran sources, with the following changes:
+
+  * Parameters: converted from models/parameters_for_PM6_C.F90 and
+    parameters_for_PM7_C.F90 into PYSEQM's CSV format (seqm_pm7/params_pm6, params_pm7).
+  * Core-core repulsion (integrals/ccrep.F90), PM7 "feathering" (mndod.F90: to_point),
+    d-orbital two-centre integrals (mndod.F90: rijkl, charg, reppd2, rotatd incl. the
+    method_PM7 block), Slater-Condon/EISOL terms (mndod.F90: scprm, eiscor;
+    models/calpar.F90; integrals/sp_two_electron.F90), atom tables (models/parameters_C.F90),
+    and the MM / dispersion / hydrogen-bond corrections (corrections/*.F90),
+    rewritten as differentiable PyTorch code and applied to PYSEQM at import time.
+  * New code not present in MOPAC: a general Slater-type-orbital overlap with
+    analytic rotation (seqm_pm7/sto_overlap.py), and the patches that route
+    PYSEQM's spd path through the above.
+
+PYSEQM itself (https://github.com/lanl/PYSEQM) is used unmodified as a dependency.
