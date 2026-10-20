@@ -79,7 +79,7 @@ UMA の拘束スキャンで作った構造（各 19 点）の上で各手法を
 ### 構造の質（DFT で評価）
 PM7 で最適化した構造で DFT の一点計算を行い、GFN2 の構造での DFT のエネルギーと比べた（[pm7_geometry_dft_check.csv](pm7_geometry_dft_check.csv)）。DFT のエネルギーが低いほうを、より DFT の極小に近い構造とみなす。
 
-- **GFN2 の構造のほうがよい**（23 種中 11 種）：AlMe3（+306 kJ/mol）、AlMe2OH（+183）、HfCl4（+136）、HfCl3OH（+85）、ZrMe4（+50）など。
+- **GFN2 の構造のほうがよい**（23 種中 10 種。HCl は差 +0.03 kJ/mol で同等、残り 12 種は PM7 の構造のほうが低い）：AlMe3（+306 kJ/mol）、AlMe2OH（+183）、HfCl4（+136）、HfCl3OH（+85）、ZrMe4（+50）など。
   - PM7 は Hf–Cl を 2.14 Å と、GFN2（2.24 Å）より大幅に短くする。
   - AlMe3 のメチル基は、PM7 では H が Al に橋をかける形に歪む。MOPAC 23.2.5 の PM7 でも同じ構造と生成熱になる（−20.33 kcal/mol）。
 - **PM7 の構造のほうがよい**：Hf(NMe2)3OH（−99）、TDMAH（−84）、Hf(OH)4（−77）、ZrNMe23OH（−29）など。Hf のアミドと水酸化物では、GFN2 の構造が DFT の極小から遠い。
