@@ -1,0 +1,190 @@
+[
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "cond": "cuda64",
+  "batch": 1,
+  "t0": 3.7470240592956543,
+  "t1": 2.1896462440490723,
+  "E0_eV": -1161.4866451245477,
+  "per_struct_s": 2.1896462440490723,
+  "peak_GB": 0.066701824
+ },
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "cond": "cuda32",
+  "batch": 1,
+  "t0": 2.453495979309082,
+  "t1": 3.1186771392822266,
+  "E0_eV": -1161.5068485334737,
+  "per_struct_s": 3.1186771392822266,
+  "peak_GB": 0.0530816
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "cond": "cuda64",
+  "batch": 1,
+  "t0": 2.8384664058685303,
+  "t1": 3.0880517959594727,
+  "E0_eV": -5405.520244896403,
+  "per_struct_s": 3.0880517959594727,
+  "peak_GB": 0.454332416
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "cond": "cuda32",
+  "batch": 1,
+  "t0": 24.465497255325317,
+  "t1": 23.329662322998047,
+  "E0_eV": -5406.144600670098,
+  "per_struct_s": 23.329662322998047,
+  "peak_GB": 2.022593024
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "cond": "cuda64",
+  "batch": 1,
+  "t0": 2.983384370803833,
+  "t1": 2.7605698108673096,
+  "E0_eV": -4646.049097938918,
+  "per_struct_s": 2.7605698108673096,
+  "peak_GB": 1.252150784
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "cond": "cuda32",
+  "batch": 1,
+  "t0": 25.749166250228882,
+  "t1": 25.58819818496704,
+  "E0_eV": -4646.631528762006,
+  "per_struct_s": 25.58819818496704,
+  "peak_GB": 3.604414976
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "cond": "cuda64",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 876.00 MiB. GPU 0 has a total capacity of 22.03 GiB of which 137.94 MiB is free. P"
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "cond": "cuda32",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 108.00 MiB. GPU 0 has a total capacity of 22.03 GiB of which 75.94 MiB is free. Pr"
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "natoms": 999,
+  "cond": "cuda64",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 7.43 GiB. GPU 0 has a total capacity of 22.03 GiB of which 4.04 GiB is free. Proce"
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "natoms": 999,
+  "cond": "cuda32",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 3.71 GiB. GPU 0 has a total capacity of 22.03 GiB of which 1.04 GiB is free. Proce"
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "natoms": 1674,
+  "cond": "cuda64",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 34.95 GiB. GPU 0 has a total capacity of 22.03 GiB of which 16.06 GiB is free. Pro"
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "natoms": 1674,
+  "cond": "cuda32",
+  "batch": 1,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 17.48 GiB. GPU 0 has a total capacity of 22.03 GiB of which 651.94 MiB is free. Pr"
+ },
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "cond": "cuda64b8",
+  "batch": 8,
+  "t0": 4.241947174072266,
+  "t1": 3.3769025802612305,
+  "E0_eV": -1161.4866451245477,
+  "per_struct_s": 0.4221128225326538,
+  "peak_GB": 0.704861696
+ },
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "cond": "cpu64",
+  "batch": 1,
+  "t0": 0.6656272411346436,
+  "t1": 0.752770185470581,
+  "E0_eV": -1161.4866451246169,
+  "per_struct_s": 0.752770185470581
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "cond": "cuda64b8",
+  "batch": 8,
+  "t0": 10.235564708709717,
+  "t1": 10.656986236572266,
+  "E0_eV": -5405.520244896403,
+  "per_struct_s": 1.3321232795715332,
+  "peak_GB": 9.5234304
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "cond": "cpu64",
+  "batch": 1,
+  "t0": 4.584441184997559,
+  "t1": 4.59878134727478,
+  "E0_eV": -5405.520244895566,
+  "per_struct_s": 4.59878134727478
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "cond": "cuda64b8",
+  "batch": 8,
+  "t0": 10.772073745727539,
+  "t1": 10.931593894958496,
+  "E0_eV": -4646.049097938918,
+  "per_struct_s": 1.366449236869812,
+  "peak_GB": 15.836050432
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "cond": "cpu64",
+  "batch": 1,
+  "t0": 3.1218643188476562,
+  "t1": 2.95474910736084,
+  "E0_eV": -4646.049097916717,
+  "per_struct_s": 2.95474910736084
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "cond": "cuda64b8",
+  "batch": 8,
+  "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 6.84 GiB. GPU 0 has a total capacity of 22.03 GiB of which 4.09 GiB is free. Proce"
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "cond": "cpu64",
+  "batch": 1,
+  "t0": 271.86466670036316,
+  "t1": 260.3334889411926,
+  "E0_eV": -36533.062264329674,
+  "per_struct_s": 260.3334889411926
+ }
+]
