@@ -22,3 +22,7 @@ The derived parts are re-implementations in Python/PyTorch of algorithms in the 
     PYSEQM's spd path through the above.
 
 PYSEQM itself (https://github.com/lanl/PYSEQM) is used unmodified as a dependency.
+
+The optional ozaki/ helper (oz2_shim.cu, build_oz2.sh) links against GEMMul8
+(https://github.com/RIKEN-RCCS/GEMMul8, MIT License, Copyright (c) 2025- RIKEN R-CCS), which is downloaded at build time
+and is not redistributed here.

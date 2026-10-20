@@ -18,6 +18,9 @@ from . import scf_fast; scf_fast.patch()
 from . import fock_fast; fock_fast.patch()
 from . import rot_fast; rot_fast.patch()
 from . import farfield; farfield.patch()
+from . import topo_fast, hbond_vec as _HBV
+set_up_dentate = topo_fast.set_up_dentate
+_HBV.find_hbonds = topo_fast.find_hbonds; _HBV.setup_dh_plus = topo_fast.setup_dh_plus
 EV2KCAL = 23.060547830619029
 SYM = list(_SYMS[1:87])
 torch.set_default_dtype(torch.float64)
@@ -40,7 +43,7 @@ class Topology:
     def __init__(self, Z, X): self.nbonds, self.ibonds = set_up_dentate(list(Z), np.asarray(X))
 
 def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp=None, hbond=None,
-            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=8, pre_mode="inline", cutoff=None, cutoff_approx=False, _return_mol=False):
+            topology=None, scf_eps=1e-9, P0=None, return_density=False, constants="codata", scf_converger=None, pre_iter=8, pre_mode="inline", cutoff=None, cutoff_approx=False, eig="auto", _return_mol=False):
     """symbols: 元素記号か原子番号の列（全分子で共通）。coords: (n,3) または (nmol,n,3) Å。
     method: "PM7"（MOPAC の PM7 に相当）、"PM7-"（補正なし = MOPAC の PM7-）、"PM6"（MOPAC の PM6 に相当）。
     戻り値は kcal/mol と kcal/mol/Å。"""
@@ -65,6 +68,10 @@ def compute(symbols, coords, method="PM7", charge=0, device="cpu", mm=True, disp
             raise ValueError("cutoff は 7 Å 以上にする（PM7 の feathering が点電荷になる距離）")
         if m != "PM7" and m != "PM7-" and not cutoff_approx:
             raise ValueError("PM6 には feathering が無く、打ち切りは近似になる。使うなら cutoff_approx=True")
+    from . import scf_compact as _SCC
+    if eig not in ("auto", "fp64"):
+        raise ValueError('eig は "auto"（軌道数 1000 以上で単精度＋尾崎スキーム II の補正、ライブラリがあるとき）か "fp64"')
+    _SCC.MODE = eig
     o = np.argsort(-Z, kind="stable")
     dev = torch.device(device)
     species = torch.as_tensor(np.tile(Z[o], (nmol, 1)), device=dev)

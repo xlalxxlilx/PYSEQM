@@ -10,6 +10,7 @@ import torch
 import seqm.seqm_functions.scf_loop as _SL
 
 ENABLED = True
+MODE = "auto"     # "auto"（大きい行列で eig_mixed を使う）/ "fp64"（常に倍精度の固有値計算）
 
 
 def _index(problem, nbf):
@@ -55,6 +56,9 @@ class _Ctx:
         return self.g(F)
 
     def density(self, Fc):
+        from . import eig_mixed
+        if MODE != "fp64" and Fc.shape[-1] >= eig_mixed.MIN_N and Fc.is_cuda and eig_mixed.available():
+            return eig_mixed.density(Fc, self.nocc)
         e, v = torch.linalg.eigh(Fc, UPLO="U")
         vo = v[:, :, :self.nocc]
         return 2.0 * vo @ vo.transpose(1, 2)

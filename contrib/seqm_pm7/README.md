@@ -1,4 +1,4 @@
-# seqm_pm7 v0.4 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応・高速化・距離による打ち切り）
+# seqm_pm7 v0.5 — PYSEQM 用の PM7（MOPAC 23.2.5 互換）と PM6 の互換補正（d 元素対応・高速化・距離による打ち切り・尾崎スキーム II）
 
 > **English summary.** `seqm_pm7` adds MOPAC-23.2.5-compatible **PM7**, **PM7-** and **PM6** (with MOPAC's
 > corrections) to PYSEQM, including elements with d orbitals (validated for H, C, N, O, F, Al, Si, Cl, Zr, Hf).
@@ -14,6 +14,10 @@
 > in the d-integral rotation, and adds an optional distance cutoff (`cutoff=10.0`, PM7 only): beyond 7 Å PM7's feathering
 > makes all two-centre integrals point charges, so far pairs are handled with point-charge Fock/Hcore terms plus the full
 > core–core expression (errors ≤ 5e-5 kcal/mol at 10 Å). 486/999-atom Zr systems that ran out of GPU memory now take ~12 s.
+> v0.5 replaces the FP64 eigensolver for matrices with ≥ 1000 orbitals by an FP32 eigensolver plus two Ogita–Aishima
+> refinement passes in FP64, with the refinement GEMMs emulated on INT8 tensor cores by GEMMul8 (Ozaki scheme II,
+> 14 moduli); the density matrix agrees with FP64 to ~1e-11 and SCF iteration counts are unchanged. It also vectorises the
+> bond/H-bond topology search (identical results, 25 s → 0.5 s for 1674 atoms). 1674-atom water cluster: 49 s → 14 s on an L4.
 
 
 PYSEQM（LANL、PyTorch 実装の NDDO 法）に、MOPAC の **PM7** と、MOPAC と同じ補正つきの **PM6** を外付けで追加するパッケージ。
@@ -33,6 +37,7 @@ PYSEQM 本体のファイルは書き換えず、読み込み時に関数を差�
 | ⑦ Si–O–H 補正（PM7） | Si と H の両方に結合した O ごとの角度補正 15·(θ − 125°)²·exp(…) | `corrections/set_up_dentate.F90` の `Si_O_H_Correction` |
 | ⑧ 高速化（v0.3） | SCF の前処理を同じ積分のまま行う（`scf_fast`）、d 経路の Fock 行列を s・p だけの対と d を含む対に分けて bmm で組み立てる（`fock_fast`）、回転行列の要素ごとの in-place 代入を 1 回の代入にまとめて逆伝播を速くする（`rot_fast`）。結果は変えない | ― |
 | ⑨ 高速化・打ち切り（v0.4） | SCF を実際の軌道だけで回す（`scf_compact`）、d 積分の回転の in-place 代入をまとめる（`rot_fast`）、Fock の積分の切り出しと 1 中心 d 項の行列積化（`fock_fast`）、距離による打ち切り（`farfield`、`cutoff=` 引数、PM7 のみ） | `integrals/mndod.F90` の `to_point` |
+| ⑩ 尾崎スキーム II・トポロジー（v0.5） | 軌道数 1000 以上の固有値計算を、単精度の固有値計算と倍精度の Ogita–Aishima 補正（GEMM は GEMMul8 で INT8 エミュレーション）に置き換える（`eig_mixed`、`eig=` 引数）。結合と水素結合の探索をベクトル化する（`topo_fast`、結果は同じ） | ― |
 | 物理定数 | 既定で CODATA（MOPAC 23 の既定）。`constants="old"` で PYSEQM・MOPAC OLDFPC の旧値 | `conref_C.F90` |
 
 補正項はすべて torch で書いてあり、力は自動微分で得る（MOPAC は分散・水素結合の勾配を前進差分で近似している）。
@@ -46,6 +51,8 @@ r["Hf"]        # 生成熱 kcal/mol（MOPAC の FINAL HEAT OF FORMATION に相�
 r["forces"]    # kcal/mol/Å
 r["E_disp"], r["E_hb"], r["E_CC"], r["E_NHCO"]   # 補正項の内訳 kcal/mol
 r = seqm_pm7.compute(symbols, coords, "PM7", device="cuda", cutoff=10.0)   # 数百原子以上の系（PM7 のみ）
+# 軌道数 1000 以上では、SEQM_PM7_OZ2_LIB（ozaki/build_oz2.sh で作る）があれば固有値計算を自動で置き換える（eig="auto"）。
+# 常に倍精度の固有値計算にするなら eig="fp64"
 # method: "PM7"（MOPAC PM7）, "PM7-"（補正なし = MOPAC PM7-）, "PM6"（MOPAC PM6）
 
 from seqm_pm7 import SeqmPM7          # ASE 計算機（energy は Hf を eV に換算）
@@ -160,6 +167,64 @@ TDMAZ 単体でも、MOPAC との差は +0.0005 kcal/mol ある（`validation/pe
 
 ASE の `SeqmPM7` は、既定で前の構造の密度行列を次の SCF の初期値に使う。
 
+## 固有値計算の高速化（v0.5、尾崎スキーム II）
+
+L4 のように倍精度の演算が遅い GPU では、軌道数が 1000 を超えると、SCF の毎回の倍精度の固有値計算（cuSOLVER）が重くなる。
+v0.5 では、密度行列を次の手順で作る（`eig_mixed`）。
+
+1. 単精度で固有値計算をする。
+2. Ogita–Aishima（2018）の反復改良を、倍精度で 2 回行う。
+   - 1 回目：全体の固有ベクトルを更新する。
+   - 2 回目：占有軌道と非占有軌道の間だけを補正する。
+   - 占有軌道の中の回転は密度行列を変えないので、縮退があっても割り算は起きない。
+3. 補正の行列積を、GEMMul8（理研、MIT ライセンス）の尾崎スキーム II（INT8 テンソルコア、法の数 14）で計算する。
+
+**使う条件**
+- 軌道数が 1000 以上で、窓口のライブラリ（`SEQM_PM7_OZ2_LIB`）があるときに、自動で使う（`eig="auto"`、既定）。
+- `eig="fp64"` を指定すると、常に倍精度の固有値計算を使う。
+- 補正量が大きいとき（1e-4 超）は、倍精度の固有値計算に戻す。
+
+**窓口のライブラリの作り方**
+- `ozaki/build_oz2.sh` で作る。CUDA 12.9 以上が必要。
+- 作った `liboz2shim.so` は、cuBLAS 12.9 を静的にリンクして記号を隠してあるので、torch の cuBLAS と衝突しない。
+
+**L4 での測定**（`validation/bench_oz2.json`、`validation/bench_dens.json`、`validation/scf_mixed.json`）
+
+| 項目 | 1000 次元 | 2000 次元 | 3375 次元 | 4096 次元 |
+|---|---|---|---|---|
+| DGEMM：ネイティブ / 尾崎 II（INT8、法の数 14） | 5.3 / 0.59 ms | 40.4 / 4.3 ms | 190 / 17.8 ms | 333 / 26.6 ms |
+| DGEMM エミュレーションの相対誤差 | 2.0e-15 | 4.6e-15 | 6.2e-15 | 7.0e-15 |
+| 密度行列：倍精度の固有値計算 / 単精度 + 補正 1 回 | 41.8 / 14.0 ms | 167 / 62.8 ms | 783 / 219 ms | 1434 / 425 ms |
+
+（FP8 方式は、1000 次元以上で誤差が大きく使えなかった。GEMMul8 の FP8 方式と Ada 世代の組み合わせの問題か、窓口の使い方の問題かは未確認。）
+
+**SCF での比較**（GPU 1 構造、打ち切り距離 10 Å、補正 2 回）
+
+| 系 | 軌道数 | 倍精度の固有値計算 | eig="auto" | 生成熱の差 | 力の差の最大 | Fock の組み立て回数 | MOPAC 23.2.5（1 スレッド） |
+|---|---|---|---|---|---|---|---|
+| 27×HF(H2O)20（1674 原子） | 3375 | 24.1 s | 14.1 s | 8.3e-7 kcal/mol | 1.0e-10 | 17 / 17 | 47.8 s |
+| 27×TDMAZ（999 原子） | 2187 | 10.4 s | 7.4 s | −8.1e-8 kcal/mol | 5.0e-11 | 20 / 20 | 15.0 s |
+| 27×Zr4O6(OH)4（486 原子） | 2160 | 11.3 s | 8.1 s | 9.8e-7 kcal/mol | 1.7e-10 | 20 / 20 | 17.6 s |
+
+- 倍精度の固有値計算どうしでも、生成熱は実行ごとに 3e-6 kcal/mol 程度揺れる（SCF の収束の幅）。上の差はその範囲に収まる。
+- 補正が 1 回だけだと、密度行列に 1e-11 程度の誤差が残る。3375 軌道の系では Fock の組み立て回数が 17 回から 19〜27 回に増えたので、補正を 2 回にした。
+- 324 軌道（148 原子）を 8 構造まとめる場合、固有値計算は演算量ではなく呼び出しの遅延が律速になる。このため単精度にしても速くならず、この方式は使わない（軌道数 1000 未満）。
+- 倍精度の固有値計算の列（24.1 s など）は、下の「結合と水素結合の探索」の修正を入れたあとの値である。v0.4 では 1674 原子の水クラスターに 49.1 s かかっていた。
+
+## 結合と水素結合の探索（v0.5）
+
+v0.4 までは、次の 3 つを Python の二重ループで行っていた。
+
+- MOPAC の set_up_dentate（結合リストの作成）の移植
+- PM7 の水素結合補正の候補探し（find_hbonds）
+- 置換基の割り当て（setup_dh_plus）
+
+1674 原子の水クラスターでは、合わせて約 26 s かかり、SCF 全体より重かった。
+v0.5 では、距離の判定を numpy でまとめて行い、順序に意味がある部分だけを元と同じ順序で処理する（`topo_fast`）。
+
+- sp の 106 系と 1674 原子の水クラスターで、結果（水素結合の組、置換基の割り当て、結合リスト）は元の実装と完全に一致する。
+- 1674 原子（水素結合の組 8145 個）では、25.4 s から 0.52 s になった。
+
 ```python
 from ase.optimize import BFGS
 atoms.calc = SeqmPM7("PM7", device="cuda")        # d 元素を含む系もそのまま
@@ -168,4 +233,4 @@ r = seqm_pm7.compute(symbols, coords_batch, "PM7", device="cuda")   # (nmol, n, 
 r["scf_converged"], r["scf_converger"]           # SCF の収束と使った方法
 ```
 
-テスト: `PYTHONPATH=. python -m pytest -q tests/`（66 件、CPU で約 1 分）。
+テスト: `PYTHONPATH=. python -m pytest -q tests/`（68 件、約 1 分。`test_eig_mixed.py` の 2 件は GPU と `SEQM_PM7_OZ2_LIB` が無いと飛ばす）。
