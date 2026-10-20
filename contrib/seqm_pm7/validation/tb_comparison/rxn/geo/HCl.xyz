@@ -1,0 +1,4 @@
+2
+Properties=species:S:1:pos:R:3 energy:=T -5.052813508988=T gnorm:=T 0.000005169076=T xtb:=T 6.7.1=T (edcfbbe)=T pbc="F F F"
+Cl       0.00000000       0.00000000       0.06962738
+H        0.00000000       0.00000000      -1.20738538

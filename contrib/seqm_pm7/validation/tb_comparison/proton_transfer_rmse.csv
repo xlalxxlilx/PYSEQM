@@ -1,0 +1,5 @@
+system,UMA_RMSE_kJmol,PM7_RMSE_kJmol,PM6_RMSE_kJmol,GFN2_RMSE_kJmol,GFN1_RMSE_kJmol,PM7_maxerr_kJmol,GFN2_maxerr_kJmol,GFN1_maxerr_kJmol
+HF_w4,0.5,51.0,22.5,4.5,4.1,101.5,7.1,10.2
+HF_w8,0.6,68.0,39.9,5.6,13.4,104.8,9.5,25.3
+NH3_w4,0.6,9.3,15.0,11.4,9.3,15.7,28.9,19.6
+NH3_w8,0.8,17.4,14.2,16.1,19.0,25.1,35.0,37.2

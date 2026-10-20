@@ -1,0 +1,86 @@
+[
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "threads": 4,
+  "t": 0.0834047794342041,
+  "ok": true
+ },
+ {
+  "system": "TDMAZ (37)",
+  "natoms": 37,
+  "threads": 8,
+  "t": 0.11172246932983398,
+  "ok": true
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "threads": 4,
+  "t": 0.5199267864227295,
+  "ok": true
+ },
+ {
+  "system": "4x Zr4O6(OH)4 (72)",
+  "natoms": 72,
+  "threads": 8,
+  "t": 0.2913029193878174,
+  "ok": true
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "threads": 4,
+  "t": 0.6648557186126709,
+  "ok": true
+ },
+ {
+  "system": "4x TDMAZ (148)",
+  "natoms": 148,
+  "threads": 8,
+  "t": 0.45886754989624023,
+  "ok": true
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "threads": 4,
+  "t": 20.66822099685669,
+  "ok": true
+ },
+ {
+  "system": "27x Zr4O6(OH)4 (486)",
+  "natoms": 486,
+  "threads": 8,
+  "t": 19.194777488708496,
+  "ok": true
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "natoms": 999,
+  "threads": 4,
+  "t": 30.098757028579712,
+  "ok": true
+ },
+ {
+  "system": "27x TDMAZ (999)",
+  "natoms": 999,
+  "threads": 8,
+  "t": 11.709406614303589,
+  "ok": true
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "natoms": 1674,
+  "threads": 4,
+  "t": 95.39081192016602,
+  "ok": true
+ },
+ {
+  "system": "27x HF(H2O)20 (1674)",
+  "natoms": 1674,
+  "threads": 8,
+  "t": 39.48135280609131,
+  "ok": true
+ }
+]
